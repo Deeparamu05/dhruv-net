@@ -10,7 +10,13 @@ import {
   Square, 
   ChevronDown, 
   ChevronUp, 
-  Sliders 
+  Sliders,
+  Battery,
+  Zap,
+  Clock,
+  ShieldCheck,
+  CheckCircle,
+  MapPin
 } from 'lucide-react';
 import { 
   SerialGPSModule, 
@@ -27,46 +33,54 @@ export default function LiveMapView({
   platformStatus,
   onGpsUpdate
 }) {
-  // GPS Source Mode: 'hardware' | 'device' | 'buoy' | 'simulator'
-  const [gpsSource, setGpsSource] = useState('device');
+  // GPS Source Mode: 'buoy' | 'device' | 'hardware' | 'simulator'
+  const [gpsSource, setGpsSource] = useState('buoy');
 
   // Serial Hardware Configuration
   const [baudRate, setBaudRate] = useState(9600);
-  const [serialStatus, setSerialStatus] = useState('disconnected'); // disconnected, requesting, connected, error
+  const [serialStatus, setSerialStatus] = useState('disconnected');
   const [serialError, setSerialError] = useState(null);
 
   // Device GPS Status
-  const [deviceStatus, setDeviceStatus] = useState('idle'); // idle, acquiring, active, error
+  const [deviceStatus, setDeviceStatus] = useState('idle');
   const [deviceError, setDeviceError] = useState(null);
 
   // Simulator Status
   const [isSimRunning, setIsSimRunning] = useState(false);
 
+  // Hardware Connection & Status Tracking
+  const isHardwareConnected = platformStatus?.nodeMcuStatus === 'CONNECTED' || Boolean(platformStatus?.hardwareConnected);
+  const nodeMcuStatus = platformStatus?.nodeMcuStatus || (isHardwareConnected ? 'CONNECTED' : 'DISCONNECTED');
+  const nodeMcuMessage = platformStatus?.nodeMcuMessage || (isHardwareConnected ? 'Hardware connected & transmitting' : 'Waiting for hardware connection');
+  const loraStatus = platformStatus?.loraStatus || 'NOT CONNECTED';
+  const loraMessage = platformStatus?.loraMessage || 'Waiting for LoRa gateway (Future Uplink)';
+  const sensorSystemStatus = platformStatus?.sensorSystem || (isHardwareConnected ? 'LIVE' : (platformStatus?.packetsReceived > 0 ? 'OFFLINE' : 'SIMULATED'));
+  const sensorSystemMessage = platformStatus?.sensorSystemMessage || (isHardwareConnected ? 'Streaming live physical sensor telemetry' : 'Using simulated sensor data');
+
+
   // NMEA Terminal Feed
   const [nmeaLogs, setNmeaLogs] = useState([]);
   const [showNmeaConsole, setShowNmeaConsole] = useState(false);
 
-  // Active GPS State
+  // Active GPS State (defaults to Bay of Bengal Coromandel Coast)
   const [activeGps, setActiveGps] = useState({
-    lat: telemetry?.coordinates?.lat || 15.2993,
-    lng: telemetry?.coordinates?.lng || 73.8243,
+    lat: telemetry?.coordinates?.lat || 11.1271,
+    lng: telemetry?.coordinates?.lng || 79.0755,
     accuracy: 5,
-    altitude: '12.4 m',
-    speedKmh: 0,
-    speedKnots: 0,
-    heading: 0,
+    altitude: '0.8 m',
+    speedKmh: 0.3,
+    speedKnots: 0.16,
+    heading: 142,
     satellites: '12 Sats',
-    fixType: 'GNSS 3D Fix',
+    fixType: '3D GNSS Fix',
     isValid: true,
     lastUpdated: null
   });
 
-  // Service Instance Refs
   const serialModuleRef = useRef(null);
   const deviceTrackerRef = useRef(null);
   const simulatorRef = useRef(null);
 
-  // Log NMEA sentence to terminal buffer (up to 80 lines)
   const appendNmeaLog = useCallback((sentence) => {
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setNmeaLogs((prev) => {
@@ -75,13 +89,12 @@ export default function LiveMapView({
     });
   }, []);
 
-  // Update App-wide GPS telemetry if available
   const handleFixReceived = useCallback((fix) => {
     setActiveGps((prev) => ({
       ...prev,
       lat: fix.lat != null ? fix.lat : prev.lat,
       lng: fix.lng != null ? fix.lng : prev.lng,
-      accuracy: fix.accuracy != null ? fix.accuracy : (fix.hdop ? Math.round(fix.hdop * 5) : 5),
+      accuracy: fix.accuracy != null ? fix.accuracy : 5,
       altitude: fix.altitude || prev.altitude,
       speedKmh: fix.speedKmh != null ? fix.speedKmh : prev.speedKmh,
       speedKnots: fix.speedKnots != null ? fix.speedKnots : prev.speedKnots,
@@ -107,35 +120,25 @@ export default function LiveMapView({
     if (gpsSource === 'buoy' && telemetry?.coordinates) {
       setActiveGps((prev) => ({
         ...prev,
-        lat: telemetry.coordinates.lat,
-        lng: telemetry.coordinates.lng,
-        accuracy: 8,
-        speedKmh: 0.4,
-        heading: 195,
+        lat: telemetry.coordinates.lat || 11.1271,
+        lng: telemetry.coordinates.lng || 79.0755,
+        accuracy: 4,
+        speedKmh: 0.3,
+        heading: 142,
         satellites: '12 Sats',
-        fixType: 'Buoy Moored GNSS Fix'
+        fixType: 'NodeMCU GNSS Fix'
       }));
     }
   }, [gpsSource, telemetry?.coordinates]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (serialModuleRef.current) {
-        serialModuleRef.current.disconnect();
-      }
-      if (deviceTrackerRef.current) {
-        deviceTrackerRef.current.stop();
-      }
-      if (simulatorRef.current) {
-        simulatorRef.current.stop();
-      }
+      if (serialModuleRef.current) serialModuleRef.current.disconnect();
+      if (deviceTrackerRef.current) deviceTrackerRef.current.stop();
+      if (simulatorRef.current) simulatorRef.current.stop();
     };
   }, []);
 
-  // --- SOURCE TOGGLING HANDLERS ---
-
-  // 1. Device GPS Handler
   const startDeviceGps = () => {
     setDeviceError(null);
     if (!deviceTrackerRef.current) {
@@ -148,9 +151,7 @@ export default function LiveMapView({
           setDeviceError(err.message || "Failed to access device GPS");
           setDeviceStatus('error');
         },
-        onStatusChange: (status) => {
-          setDeviceStatus(status);
-        }
+        onStatusChange: (status) => setDeviceStatus(status)
       });
     }
     deviceTrackerRef.current.start();
@@ -163,31 +164,22 @@ export default function LiveMapView({
     }
   };
 
-  // 2. Hardware Serial GPS Handler
   const connectSerialGps = async () => {
     setSerialError(null);
     try {
       const serialModule = new SerialGPSModule({
         baudRate,
-        onSentence: (raw) => {
-          appendNmeaLog(raw);
-        },
-        onFixUpdate: (fix) => {
-          handleFixReceived(fix);
-        },
+        onSentence: (raw) => appendNmeaLog(raw),
+        onFixUpdate: (fix) => handleFixReceived(fix),
         onError: (err) => {
           setSerialError(err.message);
           setSerialStatus('error');
         },
-        onStatusChange: (st) => {
-          setSerialStatus(st);
-        }
+        onStatusChange: (st) => setSerialStatus(st)
       });
-
       serialModuleRef.current = serialModule;
       await serialModule.connect(baudRate);
     } catch (err) {
-      console.warn("Serial connect error:", err);
       setSerialError(err.message);
     }
   };
@@ -200,7 +192,6 @@ export default function LiveMapView({
     }
   };
 
-  // 3. Simulator Handler
   const toggleSimulator = () => {
     if (isSimRunning) {
       if (simulatorRef.current) {
@@ -212,58 +203,99 @@ export default function LiveMapView({
       simulatorRef.current = new SimulatedGPSModule({
         startLat: activeGps.lat,
         startLng: activeGps.lng,
-        onSentence: (sentence) => {
-          appendNmeaLog(sentence);
-        },
-        onFixUpdate: (fix) => {
-          handleFixReceived(fix);
-        }
+        onSentence: (sentence) => appendNmeaLog(sentence),
+        onFixUpdate: (fix) => handleFixReceived(fix)
       });
       simulatorRef.current.start();
       setIsSimRunning(true);
     }
   };
 
-  // Switch GPS Source Tab
   const handleSourceChange = (newSource) => {
     if (newSource === gpsSource) return;
-
-    // Stop previous active streams if needed
     if (gpsSource === 'device') stopDeviceGps();
     if (gpsSource === 'hardware' && serialStatus === 'connected') disconnectSerialGps();
     if (gpsSource === 'simulator' && isSimRunning) toggleSimulator();
-
     setGpsSource(newSource);
-
-    // Auto-start device GPS when tab is selected
-    if (newSource === 'device') {
-      startDeviceGps();
-    }
+    if (newSource === 'device') startDeviceGps();
   };
 
   const hasWebSerial = isWebSerialSupported();
 
   return (
     <div className="live-map-view" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Top Header & Overview */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '12px' }}>
-        <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Compass size={22} color="var(--accent-cyan)" />
-            Live GPS Module & Geolocation Hub
-          </h2>
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-            Real-time GNSS telemetry ingestion from physical USB GPS modules (NEO-6M/NMEA), device geolocation, and buoy platform
-          </p>
+      {/* Required Section 5: Live Monitoring Telemetry Bar */}
+      <div className="live-monitoring-summary-bar">
+        <div className="live-mon-card">
+          <span className="live-mon-label">Platform ID</span>
+          <span className="live-mon-val highlight">DHRUV-01</span>
         </div>
 
-        {/* Global Satellite Lock Badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span className="gps-pill-status">
-            <Radio size={14} className="pulse-icon" />
-            <span style={{ fontWeight: 600 }}>{activeGps.fixType}</span>
-            <span style={{ opacity: 0.7 }}>&bull; {activeGps.satellites}</span>
+        <div className="live-mon-card">
+          <span className="live-mon-label">Platform Status</span>
+          <span className="live-mon-val online">
+            <span className="mon-dot"></span>
+            Online
           </span>
+        </div>
+
+        <div className="live-mon-card">
+          <span className="live-mon-label">Battery Level</span>
+          <span className="live-mon-val warning">
+            {telemetry?.battery || 82}%
+          </span>
+        </div>
+
+        <div className="live-mon-card">
+          <span className="live-mon-label">Battery Voltage</span>
+          <span className="live-mon-val">
+            {telemetry?.batteryVoltage || '3.9'} V
+          </span>
+        </div>
+
+        <div className="live-mon-card">
+          <span className="live-mon-label">GPS Latitude</span>
+          <span className="live-mon-val code-font">
+            {activeGps.lat.toFixed(4)}° N
+          </span>
+        </div>
+
+        <div className="live-mon-card">
+          <span className="live-mon-label">GPS Longitude</span>
+          <span className="live-mon-val code-font">
+            {activeGps.lng.toFixed(4)}° E
+          </span>
+        </div>
+
+        <div className="live-mon-card">
+          <span className="live-mon-label">Last Data Received</span>
+          <span className="live-mon-val small-val">
+            {telemetry?.displayTime || 'Just now'}
+          </span>
+        </div>
+
+        <div className="live-mon-card" title={`LoRa RA-02: ${loraMessage}`}>
+          <span className="live-mon-label">LoRa RA-02</span>
+          <span className={`live-mon-val ${isHardwareConnected ? 'lora-val' : 'not-connected'}`}>
+            {loraStatus}
+          </span>
+          <span className="live-mon-sub-msg">{loraMessage}</span>
+        </div>
+
+        <div className="live-mon-card" title={`NodeMCU ESP8266: ${nodeMcuMessage}`}>
+          <span className="live-mon-label">NodeMCU ESP8266</span>
+          <span className={`live-mon-val ${isHardwareConnected ? 'online' : 'not-connected'}`}>
+            {nodeMcuStatus}
+          </span>
+          <span className="live-mon-sub-msg">{nodeMcuMessage}</span>
+        </div>
+
+        <div className="live-mon-card" title={`Sensor System: ${sensorSystemMessage}`}>
+          <span className="live-mon-label">Sensor System</span>
+          <span className={`live-mon-val ${isHardwareConnected ? 'online' : 'simulated'}`}>
+            {sensorSystemStatus}
+          </span>
+          <span className="live-mon-sub-msg">{sensorSystemMessage}</span>
         </div>
       </div>
 
@@ -271,11 +303,19 @@ export default function LiveMapView({
       <div className="gps-control-deck glass-card">
         <div className="gps-source-tabs">
           <button 
+            className={`gps-tab-btn ${gpsSource === 'buoy' ? 'active' : ''}`}
+            onClick={() => handleSourceChange('buoy')}
+          >
+            <Radio size={16} />
+            <span>Platform LoRa GPS (DHRUV-01)</span>
+          </button>
+
+          <button 
             className={`gps-tab-btn ${gpsSource === 'device' ? 'active' : ''}`}
             onClick={() => handleSourceChange('device')}
           >
             <Smartphone size={16} />
-            <span>Device GPS (Live)</span>
+            <span>Device Geolocation (Live)</span>
           </button>
 
           <button 
@@ -283,15 +323,7 @@ export default function LiveMapView({
             onClick={() => handleSourceChange('hardware')}
           >
             <Cpu size={16} />
-            <span>Hardware GPS Module (Serial)</span>
-          </button>
-
-          <button 
-            className={`gps-tab-btn ${gpsSource === 'buoy' ? 'active' : ''}`}
-            onClick={() => handleSourceChange('buoy')}
-          >
-            <Radio size={16} />
-            <span>Ocean Buoy Telemetry</span>
+            <span>Serial GPS Module (NEO-6M USB)</span>
           </button>
 
           <button 
@@ -299,13 +331,20 @@ export default function LiveMapView({
             onClick={() => handleSourceChange('simulator')}
           >
             <Sliders size={16} />
-            <span>NMEA Simulator Feed</span>
+            <span>Ocean Drift Simulator</span>
           </button>
         </div>
 
         {/* Dynamic Source Control Toolbar */}
         <div className="gps-source-actions">
-          {/* 1. Device GPS Controls */}
+          {gpsSource === 'buoy' && (
+            <div className="source-action-row">
+              <span className="source-hint" style={{ color: 'var(--accent-cyan)' }}>
+                🌊 DHRUV-01 Moored Ocean Observation Platform in Bay of Bengal (Lat: 11.1271° N, Lng: 79.0755° E). {isHardwareConnected ? 'NodeMCU ESP8266 + LoRa RA-02 link active.' : 'Simulated buoy telemetry • Waiting for hardware connection.'}
+              </span>
+            </div>
+          )}
+
           {gpsSource === 'device' && (
             <div className="source-action-row">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -328,7 +367,6 @@ export default function LiveMapView({
             </div>
           )}
 
-          {/* 2. Hardware GPS Module Controls */}
           {gpsSource === 'hardware' && (
             <div className="source-action-row">
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -362,9 +400,9 @@ export default function LiveMapView({
 
                 <span className="source-hint">
                   {serialStatus === 'connected' && '🟢 Serial Port Open. Parsing live NMEA sentences ($GPGGA, $GPRMC)'}
-                  {serialStatus === 'requesting' && '🟡 Waiting for COM/USB port authorization in browser modal...'}
+                  {serialStatus === 'requesting' && '🟡 Waiting for COM/USB port authorization...'}
                   {serialStatus === 'disconnected' && (hasWebSerial 
-                    ? 'Connect physical GPS module (e.g. NEO-6M, U-blox, ESP32 via USB)' 
+                    ? 'Connect physical GPS module (e.g. NEO-6M, U-blox via USB COM port)' 
                     : '⚠️ Web Serial requires Chrome, Edge, or Brave')}
                   {serialStatus === 'error' && `⚠️ ${serialError || 'Serial communication failed'}`}
                 </span>
@@ -372,16 +410,6 @@ export default function LiveMapView({
             </div>
           )}
 
-          {/* 3. Ocean Buoy Telemetry Controls */}
-          {gpsSource === 'buoy' && (
-            <div className="source-action-row">
-              <span className="source-hint" style={{ color: 'var(--accent-cyan)' }}>
-                🌊 Moored ocean observer platform in Arabian Sea corridor (Sector-4, 15°17'N 73°49'E). Ocean drift simulation active.
-              </span>
-            </div>
-          )}
-
-          {/* 4. Simulator Controls */}
           {gpsSource === 'simulator' && (
             <div className="source-action-row">
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -390,16 +418,15 @@ export default function LiveMapView({
                   onClick={toggleSimulator}
                 >
                   {isSimRunning ? <Square size={14} /> : <Play size={14} />}
-                  {isSimRunning ? 'Stop Simulator' : 'Start NMEA Stream Simulation'}
+                  {isSimRunning ? 'Stop Simulator' : 'Start Ocean Drift Simulation'}
                 </button>
                 <span className="source-hint">
-                  {isSimRunning ? '🟢 Transmitting synthetic $GPGGA and $GPRMC NMEA frames at 1 Hz' : 'Generate realistic marine navigation feed to test hardware parser'}
+                  {isSimRunning ? '🟢 Transmitting synthetic $GPGGA and $GPRMC marine NMEA frames at 1 Hz' : 'Generate realistic marine navigation feed to test platform tracking'}
                 </span>
               </div>
             </div>
           )}
 
-          {/* Toggle NMEA Console Button */}
           <button 
             className={`action-pill-btn ${showNmeaConsole ? 'active' : ''}`}
             onClick={() => setShowNmeaConsole(prev => !prev)}
@@ -422,20 +449,18 @@ export default function LiveMapView({
                   Raw NMEA 0183 Ingestion Console
                 </span>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
-                  className="nmea-btn-mini" 
-                  onClick={() => setNmeaLogs([])}
-                >
-                  Clear
-                </button>
-              </div>
+              <button 
+                className="nmea-btn-mini" 
+                onClick={() => setNmeaLogs([])}
+              >
+                Clear
+              </button>
             </div>
 
             <div className="nmea-terminal-body">
               {nmeaLogs.length === 0 ? (
                 <div style={{ color: '#64748b', fontStyle: 'italic' }}>
-                  No NMEA sentences received yet. Connect a hardware GPS module, start device GPS, or launch the simulator...
+                  No NMEA sentences received yet. Connect a hardware GPS module or start the simulator...
                 </div>
               ) : (
                 nmeaLogs.map((log) => (
@@ -456,9 +481,9 @@ export default function LiveMapView({
       <div style={{ flex: 1, minHeight: '520px', marginTop: '12px' }}>
         <LiveMap 
           coordinates={{ lat: activeGps.lat, lng: activeGps.lng }}
-          platformId={platformStatus?.platformId || 'DHRUV-NET-OBS-01'}
-          waterTemp={`${telemetry?.sensors?.temperature?.value || 22.6}°C`}
-          depth={`${telemetry?.sensors?.depth?.value || 12.8}m`}
+          platformId="DHRUV-01"
+          waterTemp={`${telemetry?.sensors?.waterTemperature?.value ?? 27.4}°C`}
+          depth={`${telemetry?.sensors?.depth?.value ?? 18.6}m`}
           isFull={true}
           accuracy={activeGps.accuracy}
           speedKmh={activeGps.speedKmh}

@@ -7,45 +7,74 @@ import {
   TrendingDown, 
   Minus, 
   SlidersHorizontal,
-  Download
+  Download,
+  Info,
+  Activity,
+  Layers
 } from 'lucide-react';
 
 const PARAMETERS = {
-  temperature: {
-    key: 'temperature',
+  waterTemperature: {
+    key: 'waterTemperature',
     label: 'Water Temperature',
+    source: 'DS18B20',
     unit: '°C',
-    stroke: '#f97316'
+    stroke: '#00d2ff',
+    description: 'Subsurface water temperature monitored by waterproof DS18B20 probe.'
   },
-  salinity: {
-    key: 'salinity',
-    label: 'Salinity',
-    unit: 'PSU',
-    stroke: '#10e7b2'
-  },
-  pressure: {
-    key: 'pressure',
-    label: 'Hydrostatic Pressure',
-    unit: 'dbar',
-    stroke: '#818cf8'
-  },
-  depth: {
-    key: 'depth',
-    label: 'Subsurface Depth',
-    unit: 'm',
-    stroke: '#38bdf8'
+  airTemperature: {
+    key: 'airTemperature',
+    label: 'Air Temperature',
+    source: 'DHT22',
+    unit: '°C',
+    stroke: '#f97316',
+    description: 'Ambient air temperature measured by DHT22 digital sensor.'
   },
   humidity: {
     key: 'humidity',
-    label: 'Atmospheric Humidity',
-    unit: '% RH',
-    stroke: '#34d399'
+    label: 'Relative Humidity',
+    source: 'DHT22',
+    unit: '%',
+    stroke: '#34d399',
+    description: 'Marine boundary atmospheric humidity measured by DHT22.'
+  },
+  atmosphericPressure: {
+    key: 'atmosphericPressure',
+    label: 'Atmospheric Pressure',
+    source: 'BMP280',
+    unit: 'hPa',
+    stroke: '#818cf8',
+    description: 'Barometric pressure measured by BMP280 precision barometer.'
+  },
+  depth: {
+    key: 'depth',
+    label: 'Ocean Depth',
+    source: 'Simulated / Future Sensor',
+    unit: 'm',
+    stroke: '#38bdf8',
+    description: 'Subsurface depth marked as Simulated / Future Depth Sensor Data.'
+  },
+  roll: {
+    key: 'roll',
+    label: 'Platform Roll',
+    source: 'MPU6050',
+    unit: '°',
+    stroke: '#e879f9',
+    description: 'Transverse wave-induced roll angle measured by MPU6050 6-DOF IMU.'
+  },
+  pitch: {
+    key: 'pitch',
+    label: 'Platform Pitch',
+    source: 'MPU6050',
+    unit: '°',
+    stroke: '#fbbf24',
+    description: 'Longitudinal wave-induced pitch angle measured by MPU6050 6-DOF IMU.'
   }
 };
 
 export default function AnalyticsView() {
   const [timeRange, setTimeRange] = useState('24h');
-  const [selectedParam, setSelectedParam] = useState('temperature');
+  const [selectedParam, setSelectedParam] = useState('waterTemperature');
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -89,27 +118,39 @@ export default function AnalyticsView() {
     }
   };
 
-  // Calculate stats for current parameter
+  // Calculate summary metrics: Min, Max, Avg, and Current Value
   const stats = useMemo(() => {
-    if (!data || data.length === 0) return { min: 0, max: 0, avg: 0 };
+    if (!data || data.length === 0) return { min: 0, max: 0, avg: 0, current: 0 };
     const values = data.map((d) => d[selectedParam]).filter((v) => typeof v === 'number');
-    if (values.length === 0) return { min: 0, max: 0, avg: 0 };
+    if (values.length === 0) return { min: 0, max: 0, avg: 0, current: 0 };
 
     const min = Math.min(...values);
     const max = Math.max(...values);
     const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const current = values[values.length - 1];
 
     return {
       min: +min.toFixed(2),
       max: +max.toFixed(2),
-      avg: +avg.toFixed(2)
+      avg: +avg.toFixed(2),
+      current: +current.toFixed(2)
     };
   }, [data, selectedParam]);
 
-  const activeParamObj = PARAMETERS[selectedParam];
+  const activeParamObj = PARAMETERS[selectedParam] || PARAMETERS.waterTemperature;
 
   return (
     <div className="analytics-view">
+      {/* Simulation Banner */}
+      <div className="simulation-notice-banner" style={{ marginBottom: '18px' }}>
+        <div className="notice-icon">
+          <Info size={18} color="var(--accent-cyan)" />
+        </div>
+        <div className="notice-content">
+          <strong>SIMULATED TIME SERIES DATA:</strong> Visualizing historical oceanographic cycles (diurnal atmospheric flux, tidal oscillations, and wave attitude variations).
+        </div>
+      </div>
+
       {/* Time Filters & Custom Controls */}
       <div className="analytics-header-controls">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -121,19 +162,19 @@ export default function AnalyticsView() {
               className={`time-filter-btn ${timeRange === '1h' ? 'active' : ''}`}
               onClick={() => setTimeRange('1h')}
             >
-              Last 1 hour
+              Last 1 Hour
             </button>
             <button 
               className={`time-filter-btn ${timeRange === '24h' ? 'active' : ''}`}
               onClick={() => setTimeRange('24h')}
             >
-              Last 24 hours
+              Last 24 Hours
             </button>
             <button 
               className={`time-filter-btn ${timeRange === '7d' ? 'active' : ''}`}
               onClick={() => setTimeRange('7d')}
             >
-              Last 7 days
+              Last 7 Days
             </button>
             <button 
               className={`time-filter-btn ${timeRange === 'custom' ? 'active' : ''}`}
@@ -164,14 +205,14 @@ export default function AnalyticsView() {
               onClick={handleApplyCustomRange}
               style={{ background: 'var(--accent-blue)', color: '#ffffff', borderColor: 'transparent' }}
             >
-              Filter
+              Apply Filter
             </button>
           </div>
         )}
       </div>
 
-      {/* Parameter Selector Tabs */}
-      <div className="parameter-tabs" style={{ marginBottom: '20px' }}>
+      {/* 7 Parameter Selector Tabs */}
+      <div className="parameter-tabs">
         {Object.values(PARAMETERS).map((param) => {
           const isActive = selectedParam === param.key;
           return (
@@ -180,18 +221,31 @@ export default function AnalyticsView() {
               className={`param-tab ${isActive ? 'active' : ''}`}
               onClick={() => setSelectedParam(param.key)}
             >
-              {param.label} ({param.unit})
+              <span className="param-tab-label">{param.label}</span>
+              <span className="param-tab-source">[{param.source}]</span>
             </button>
           );
         })}
       </div>
 
-      {/* Dynamic Statistics Cards: Min, Max, Average */}
+      {/* Dynamic Summary Cards: Current, Minimum, Maximum, Average */}
       <div className="analytics-stats-row">
         <div className="stat-metric-card">
           <div className="stat-metric-info">
+            <span className="stat-metric-title">Current Value</span>
+            <span className="stat-metric-num" style={{ color: activeParamObj.stroke }}>
+              {stats.current} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>{activeParamObj.unit}</span>
+            </span>
+          </div>
+          <span className="stat-metric-badge current">LIVE</span>
+        </div>
+
+        <div className="stat-metric-card">
+          <div className="stat-metric-info">
             <span className="stat-metric-title">Minimum Reading</span>
-            <span className="stat-metric-num">{stats.min} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>{activeParamObj.unit}</span></span>
+            <span className="stat-metric-num" style={{ color: '#38bdf8' }}>
+              {stats.min} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>{activeParamObj.unit}</span>
+            </span>
           </div>
           <span className="stat-metric-badge min">MIN</span>
         </div>
@@ -199,7 +253,9 @@ export default function AnalyticsView() {
         <div className="stat-metric-card">
           <div className="stat-metric-info">
             <span className="stat-metric-title">Average Value</span>
-            <span className="stat-metric-num">{stats.avg} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>{activeParamObj.unit}</span></span>
+            <span className="stat-metric-num" style={{ color: '#34d399' }}>
+              {stats.avg} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>{activeParamObj.unit}</span>
+            </span>
           </div>
           <span className="stat-metric-badge avg">AVG</span>
         </div>
@@ -207,7 +263,9 @@ export default function AnalyticsView() {
         <div className="stat-metric-card">
           <div className="stat-metric-info">
             <span className="stat-metric-title">Maximum Reading</span>
-            <span className="stat-metric-num">{stats.max} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>{activeParamObj.unit}</span></span>
+            <span className="stat-metric-num" style={{ color: '#fb923c' }}>
+              {stats.max} <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>{activeParamObj.unit}</span>
+            </span>
           </div>
           <span className="stat-metric-badge max">MAX</span>
         </div>
@@ -218,10 +276,10 @@ export default function AnalyticsView() {
         <div className="chart-header">
           <div>
             <h3 className="chart-title">
-              {activeParamObj.label} Time Series
+              {activeParamObj.label} Time Series ({activeParamObj.unit})
             </h3>
             <span className="chart-subtitle">
-              Displaying {data.length} sample points for {timeRange === 'custom' ? 'custom duration' : timeRange}
+              Hardware Source: <strong>{activeParamObj.source}</strong> &bull; Displaying {data.length} sample points for {timeRange === 'custom' ? 'custom duration' : timeRange}
             </span>
           </div>
         </div>
@@ -241,21 +299,23 @@ export default function AnalyticsView() {
         )}
       </div>
 
-      {/* Statistical Summary Across All 5 Parameters */}
+      {/* Summary Matrix Across All 7 Parameters */}
       <div className="glass-card" style={{ marginTop: '24px' }}>
-        <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#ffffff', marginBottom: '14px' }}>
-          Parameter Summary Matrix ({timeRange})
+        <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#ffffff', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Layers size={16} color="var(--accent-cyan)" />
+          All 7 Parameters Summary Matrix ({timeRange})
         </h4>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-subtle)', textAlign: 'left', color: 'var(--text-secondary)' }}>
                 <th style={{ padding: '10px 14px' }}>Parameter</th>
+                <th style={{ padding: '10px 14px' }}>Hardware Source</th>
                 <th style={{ padding: '10px 14px' }}>Unit</th>
-                <th style={{ padding: '10px 14px' }}>Observed Min</th>
-                <th style={{ padding: '10px 14px' }}>Mean / Avg</th>
-                <th style={{ padding: '10px 14px' }}>Observed Max</th>
-                <th style={{ padding: '10px 14px' }}>Variance Span</th>
+                <th style={{ padding: '10px 14px' }}>Current</th>
+                <th style={{ padding: '10px 14px' }}>Minimum</th>
+                <th style={{ padding: '10px 14px' }}>Average</th>
+                <th style={{ padding: '10px 14px' }}>Maximum</th>
               </tr>
             </thead>
             <tbody>
@@ -264,16 +324,17 @@ export default function AnalyticsView() {
                 const pMin = vals.length ? Math.min(...vals).toFixed(2) : '--';
                 const pMax = vals.length ? Math.max(...vals).toFixed(2) : '--';
                 const pAvg = vals.length ? (vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(2) : '--';
-                const span = vals.length ? (Math.max(...vals) - Math.min(...vals)).toFixed(2) : '--';
+                const pCur = vals.length ? vals[vals.length - 1].toFixed(2) : '--';
 
                 return (
                   <tr key={param.key} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
                     <td style={{ padding: '10px 14px', color: '#ffffff', fontWeight: 500 }}>{param.label}</td>
+                    <td style={{ padding: '10px 14px', color: 'var(--accent-teal)' }}>{param.source}</td>
                     <td style={{ padding: '10px 14px', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>{param.unit}</td>
+                    <td style={{ padding: '10px 14px', color: '#f8fafc', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>{pCur}</td>
                     <td style={{ padding: '10px 14px', color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>{pMin}</td>
                     <td style={{ padding: '10px 14px', color: '#34d399', fontFamily: 'var(--font-mono)' }}>{pAvg}</td>
                     <td style={{ padding: '10px 14px', color: '#fb923c', fontFamily: 'var(--font-mono)' }}>{pMax}</td>
-                    <td style={{ padding: '10px 14px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>&plusmn; {span}</td>
                   </tr>
                 );
               })}

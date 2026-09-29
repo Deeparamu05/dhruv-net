@@ -290,99 +290,103 @@ export default function LiveMap({
     <div className={`map-container-wrapper ${isFull ? 'full-view' : 'dashboard-mini'}`}>
       <div 
         ref={mapContainerRef} 
-        style={{ width: '100%', height: '100%', minHeight: isFull ? '550px' : '360px' }} 
+        style={{ width: '100%', height: '100%', minHeight: isFull ? '550px' : '100%' }} 
       />
 
-      {/* Floating Tactical Map Controls Toolbar */}
-      <div className="map-toolbar-floating">
-        <button 
-          className={`map-tool-btn ${isFollowing ? 'active' : ''}`}
-          onClick={() => setIsFollowing(prev => !prev)}
-          title={isFollowing ? 'Auto-Center: ON (tracking target)' : 'Auto-Center: OFF'}
-        >
-          <Crosshair size={16} />
-          <span className="tool-btn-text">{isFollowing ? 'Following' : 'Follow Off'}</span>
-        </button>
+      {/* Floating Tactical Map Controls Toolbar - Full view only to prevent dashboard overlap */}
+      {isFull && (
+        <div className="map-toolbar-floating">
+          <button 
+            className={`map-tool-btn ${isFollowing ? 'active' : ''}`}
+            onClick={() => setIsFollowing(prev => !prev)}
+            title={isFollowing ? 'Auto-Center: ON (tracking target)' : 'Auto-Center: OFF'}
+          >
+            <Crosshair size={16} />
+            <span className="tool-btn-text">{isFollowing ? 'Following' : 'Follow Off'}</span>
+          </button>
 
-        <button 
-          className="map-tool-btn"
-          onClick={handleRecenter}
-          title="Recenter GPS Position"
-        >
-          <Navigation size={16} />
-          <span className="tool-btn-text">Center</span>
-        </button>
-
-        <button 
-          className="map-tool-btn"
-          onClick={handleClearTrail}
-          title={`Clear GPS Trail (${pointCount} points)`}
-        >
-          <Trash2 size={16} />
-          <span className="tool-btn-text">Clear Path</span>
-        </button>
-
-        {/* Map Layers Dropdown / Selector */}
-        <div className="map-layer-selector">
           <button 
             className="map-tool-btn"
-            title="Switch Map Tiles"
-            onClick={() => {
-              const keys = Object.keys(TILE_LAYERS);
-              const nextIdx = (keys.indexOf(activeLayer) + 1) % keys.length;
-              setActiveLayer(keys[nextIdx]);
-            }}
+            onClick={handleRecenter}
+            title="Recenter GPS Position"
           >
-            <Layers size={16} />
-            <span className="tool-btn-text">{TILE_LAYERS[activeLayer].name}</span>
+            <Navigation size={16} />
+            <span className="tool-btn-text">Center</span>
           </button>
+
+          <button 
+            className="map-tool-btn"
+            onClick={handleClearTrail}
+            title={`Clear GPS Trail (${pointCount} points)`}
+          >
+            <Trash2 size={16} />
+            <span className="tool-btn-text">Clear Path</span>
+          </button>
+
+          {/* Map Layers Dropdown / Selector */}
+          <div className="map-layer-selector">
+            <button 
+              className="map-tool-btn"
+              title="Switch Map Tiles"
+              onClick={() => {
+                const keys = Object.keys(TILE_LAYERS);
+                const nextIdx = (keys.indexOf(activeLayer) + 1) % keys.length;
+                setActiveLayer(keys[nextIdx]);
+              }}
+            >
+              <Layers size={16} />
+              <span className="tool-btn-text">{TILE_LAYERS[activeLayer].name}</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       
-      {/* Telemetry HUD Overlay */}
-      <div className="map-hud-overlay">
-        <div className="map-hud-item">
-          <span className="map-hud-label">GPS Source</span>
-          <span className="map-hud-val" style={{ color: gpsSource === 'hardware' ? '#34d399' : gpsSource === 'device' ? '#38bdf8' : '#00d2ff', textTransform: 'capitalize' }}>
-            {gpsSource === 'hardware' ? '🔌 USB GPS (Serial)' : gpsSource === 'device' ? '🛰️ Device GNSS' : '🌊 Ocean Buoy'}
-          </span>
-        </div>
+      {/* Telemetry HUD Overlay - Full view only */}
+      {isFull && (
+        <div className="map-hud-overlay">
+          <div className="map-hud-item">
+            <span className="map-hud-label">GPS Source</span>
+            <span className="map-hud-val" style={{ color: gpsSource === 'hardware' ? '#34d399' : gpsSource === 'device' ? '#38bdf8' : '#00d2ff', textTransform: 'capitalize' }}>
+              {gpsSource === 'hardware' ? '🔌 USB GPS (Serial)' : gpsSource === 'device' ? '🛰️ Device GNSS' : '🌊 Ocean Buoy'}
+            </span>
+          </div>
 
-        <div className="map-hud-item">
-          <span className="map-hud-label">Position (Decimal)</span>
-          <span className="map-hud-val">
-            {coordinates?.lat ? `${coordinates.lat.toFixed(5)}° N, ${coordinates.lng.toFixed(5)}° E` : '--'}
-          </span>
-        </div>
+          <div className="map-hud-item">
+            <span className="map-hud-label">Position (Decimal)</span>
+            <span className="map-hud-val">
+              {coordinates?.lat ? `${coordinates.lat.toFixed(5)}° N, ${coordinates.lng.toFixed(5)}° E` : '--'}
+            </span>
+          </div>
 
-        <div className="map-hud-item">
-          <span className="map-hud-label">Position (DMS)</span>
-          <span className="map-hud-val" style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-            {formattedDMS}
-          </span>
-        </div>
+          <div className="map-hud-item">
+            <span className="map-hud-label">Position (DMS)</span>
+            <span className="map-hud-val" style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+              {formattedDMS}
+            </span>
+          </div>
 
-        <div className="map-hud-item">
-          <span className="map-hud-label">Accuracy / HDOP</span>
-          <span className="map-hud-val" style={{ color: accuracy <= 5 ? '#34d399' : accuracy <= 15 ? '#fbbf24' : '#f87171' }}>
-            &plusmn;{accuracy} m
-          </span>
-        </div>
+          <div className="map-hud-item">
+            <span className="map-hud-label">Accuracy / HDOP</span>
+            <span className="map-hud-val" style={{ color: accuracy <= 5 ? '#34d399' : accuracy <= 15 ? '#fbbf24' : '#f87171' }}>
+              &plusmn;{accuracy} m
+            </span>
+          </div>
 
-        <div className="map-hud-item">
-          <span className="map-hud-label">Speed & Bearing</span>
-          <span className="map-hud-val">
-            {speedKmh} km/h &bull; {heading}°
-          </span>
-        </div>
+          <div className="map-hud-item">
+            <span className="map-hud-label">Speed & Bearing</span>
+            <span className="map-hud-val">
+              {speedKmh} km/h &bull; {heading}°
+            </span>
+          </div>
 
-        <div className="map-hud-item">
-          <span className="map-hud-label">GNSS Satellites</span>
-          <span className="map-hud-val" style={{ color: '#38bdf8' }}>
-            {satellites}
-          </span>
+          <div className="map-hud-item">
+            <span className="map-hud-label">GNSS Satellites</span>
+            <span className="map-hud-val" style={{ color: '#38bdf8' }}>
+              {satellites}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
